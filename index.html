@@ -13,8 +13,9 @@
         --muted: #6b7280;
         --accent: #0a84ff;
         --border: #d1d5db;
-        --mask-tint: rgba(246, 247, 251, 0.28);
-        --focus-line: rgba(17, 24, 39, 0.2);
+        --focus-line: rgba(17, 24, 39, 0.22);
+        --focus-bg: rgba(255, 59, 48, 0.06);
+        --focus-text: #d92c20;
       }
 
       @media (prefers-color-scheme: dark) {
@@ -25,8 +26,9 @@
           --muted: #9ca3af;
           --accent: #4ea2ff;
           --border: #303742;
-          --mask-tint: rgba(11, 13, 18, 0.32);
           --focus-line: rgba(243, 244, 246, 0.28);
+          --focus-bg: rgba(255, 107, 97, 0.1);
+          --focus-text: #ff6b61;
         }
       }
 
@@ -61,7 +63,7 @@
 
       .controls {
         display: grid;
-        grid-template-columns: repeat(6, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 12px;
         align-items: end;
       }
@@ -136,6 +138,8 @@
       .teleprompter {
         --side-padding: 110px;
         --focus-height: 216px;
+        --top-spacing: 220px;
+        --bottom-spacing: 220px;
         height: calc(100dvh - 170px);
         position: relative;
         overflow-y: auto;
@@ -146,51 +150,32 @@
       }
 
       .teleprompter-text {
-        position: relative;
-        z-index: 1;
         white-space: pre-wrap;
         line-height: 1.5;
         font-weight: 600;
         font-size: 72px;
         letter-spacing: 0.02em;
-        padding: 24px var(--side-padding) 28px;
+        padding: var(--top-spacing) var(--side-padding) var(--bottom-spacing);
       }
 
-      .focus-mask {
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-        z-index: 2;
-      }
-
-      .focus-blur {
-        position: absolute;
-        left: 0;
-        right: 0;
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
-      }
-
-      .focus-top {
-        top: 0;
-        height: calc((100% - var(--focus-height)) / 2);
-        background: linear-gradient(180deg, var(--mask-tint), rgba(0, 0, 0, 0));
-      }
-
-      .focus-bottom {
-        bottom: 0;
-        height: calc((100% - var(--focus-height)) / 2);
-        background: linear-gradient(0deg, var(--mask-tint), rgba(0, 0, 0, 0));
-      }
-
-      .focus-window {
+      .focus-highlight-window {
         position: absolute;
         left: 0;
         right: 0;
         top: calc((100% - var(--focus-height)) / 2);
         height: var(--focus-height);
+        overflow: hidden;
+        pointer-events: none;
+        z-index: 3;
+        background: var(--focus-bg);
         border-top: 1px solid var(--focus-line);
         border-bottom: 1px solid var(--focus-line);
+      }
+
+      .teleprompter-text-highlight {
+        color: var(--focus-text);
+        font-weight: 700;
+        transform: translateY(0);
       }
 
       .hint {
@@ -221,12 +206,11 @@
         height: 100dvh;
         border-radius: 0;
         border: 0;
-        padding: 28px;
       }
 
       @media (max-width: 860px) {
         .controls {
-          grid-template-columns: 1fr 1fr 1fr;
+          grid-template-columns: 1fr 1fr;
         }
 
         .teleprompter {
@@ -293,6 +277,16 @@
             <input id="sidePadding" type="range" min="0" max="320" step="4" value="110" />
             <div id="sidePaddingValue" class="value">110 px</div>
           </div>
+          <div class="control">
+            <label for="topSpacing">上留白</label>
+            <input id="topSpacing" type="range" min="0" max="1200" step="10" value="220" />
+            <div id="topSpacingValue" class="value">220 px</div>
+          </div>
+          <div class="control">
+            <label for="bottomSpacing">下留白</label>
+            <input id="bottomSpacing" type="range" min="0" max="1200" step="10" value="220" />
+            <div id="bottomSpacingValue" class="value">220 px</div>
+          </div>
           <div class="control" style="grid-column: span 2;">
             <div class="buttons">
               <button id="start" class="primary">开始</button>
@@ -317,10 +311,8 @@
       <section id="teleprompterPanel" class="panel">
         <div id="teleprompter" class="teleprompter">
           <div id="teleprompterText" class="teleprompter-text"></div>
-          <div class="focus-mask" aria-hidden="true">
-            <div class="focus-blur focus-top"></div>
-            <div class="focus-window"></div>
-            <div class="focus-blur focus-bottom"></div>
+          <div class="focus-highlight-window" aria-hidden="true">
+            <div id="teleprompterHighlightText" class="teleprompter-text teleprompter-text-highlight"></div>
           </div>
         </div>
       </section>
@@ -330,6 +322,7 @@
       const sourceText = document.getElementById("sourceText");
       const teleprompter = document.getElementById("teleprompter");
       const teleprompterText = document.getElementById("teleprompterText");
+      const teleprompterHighlightText = document.getElementById("teleprompterHighlightText");
 
       const speed = document.getElementById("speed");
       const speedValue = document.getElementById("speedValue");
@@ -341,6 +334,10 @@
       const durationValue = document.getElementById("durationValue");
       const sidePadding = document.getElementById("sidePadding");
       const sidePaddingValue = document.getElementById("sidePaddingValue");
+      const topSpacing = document.getElementById("topSpacing");
+      const topSpacingValue = document.getElementById("topSpacingValue");
+      const bottomSpacing = document.getElementById("bottomSpacing");
+      const bottomSpacingValue = document.getElementById("bottomSpacingValue");
 
       const startButton = document.getElementById("start");
       const pauseButton = document.getElementById("pause");
@@ -354,7 +351,9 @@
       let durationModeSpeed = 0;
 
       function syncText() {
-        teleprompterText.textContent = sourceText.value || "";
+        const text = sourceText.value || "";
+        teleprompterText.textContent = text;
+        teleprompterHighlightText.textContent = text;
       }
 
       function updateSpeedLabel() {
@@ -364,6 +363,7 @@
       function updateFontLabel() {
         const px = `${fontSize.value}px`;
         teleprompterText.style.fontSize = px;
+        teleprompterHighlightText.style.fontSize = px;
         fontSizeValue.textContent = px;
         const focusHeight = Math.round(Number(fontSize.value) * 1.5 * 2);
         teleprompter.style.setProperty("--focus-height", `${focusHeight}px`);
@@ -373,6 +373,19 @@
         const value = Number(sidePadding.value);
         teleprompter.style.setProperty("--side-padding", `${value}px`);
         sidePaddingValue.textContent = `${value} px`;
+      }
+
+      function updateVerticalSpacing() {
+        const topValue = Number(topSpacing.value);
+        const bottomValue = Number(bottomSpacing.value);
+        teleprompter.style.setProperty("--top-spacing", `${topValue}px`);
+        teleprompter.style.setProperty("--bottom-spacing", `${bottomValue}px`);
+        topSpacingValue.textContent = `${topValue} px`;
+        bottomSpacingValue.textContent = `${bottomValue} px`;
+      }
+
+      function syncHighlightOffset() {
+        teleprompterHighlightText.style.transform = `translateY(${-teleprompter.scrollTop}px)`;
       }
 
       function formatDuration(seconds) {
@@ -432,6 +445,7 @@
 
         const frameSpeed = speedMode.value === "duration" ? durationModeSpeed : Number(speed.value);
         teleprompter.scrollTop += frameSpeed * deltaSeconds;
+        syncHighlightOffset();
 
         const maxTop = teleprompter.scrollHeight - teleprompter.clientHeight;
         if (teleprompter.scrollTop >= maxTop) {
@@ -467,6 +481,7 @@
         teleprompter.scrollTop = 0;
         running = false;
         lastFrameTime = 0;
+        syncHighlightOffset();
         updateModeHint();
       });
 
@@ -496,6 +511,14 @@
       speed.addEventListener("input", updateSpeedLabel);
       fontSize.addEventListener("input", updateFontLabel);
       sidePadding.addEventListener("input", updateSidePaddingLabel);
+      topSpacing.addEventListener("input", () => {
+        updateVerticalSpacing();
+        updateModeHint();
+      });
+      bottomSpacing.addEventListener("input", () => {
+        updateVerticalSpacing();
+        updateModeHint();
+      });
       speedMode.addEventListener("change", () => {
         if (running && speedMode.value === "duration") {
           const remaining = getRemainingDistance();
@@ -508,15 +531,26 @@
         updateDurationLabel();
         updateModeHint();
       });
-      teleprompter.addEventListener("scroll", updateModeHint);
-      document.addEventListener("fullscreenchange", updateModeHint);
-      window.addEventListener("resize", updateModeHint);
+      teleprompter.addEventListener("scroll", () => {
+        syncHighlightOffset();
+        updateModeHint();
+      });
+      document.addEventListener("fullscreenchange", () => {
+        syncHighlightOffset();
+        updateModeHint();
+      });
+      window.addEventListener("resize", () => {
+        syncHighlightOffset();
+        updateModeHint();
+      });
 
       syncText();
       updateSpeedLabel();
       updateFontLabel();
       updateSidePaddingLabel();
+      updateVerticalSpacing();
       updateDurationLabel();
+      syncHighlightOffset();
       updateModeHint();
     </script>
   </body>
