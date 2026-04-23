@@ -314,10 +314,19 @@
           <div class="control">
             <label for="highlightMode">高亮</label>
             <select id="highlightMode">
-              <option value="off">关闭</option>
               <option value="on">开启</option>
+              <option value="off">关闭</option>
             </select>
-            <div id="highlightModeValue" class="value">高亮已关闭</div>
+            <div id="highlightModeValue" class="value">中间 1 行已高亮</div>
+          </div>
+          <div class="control">
+            <label for="highlightLines">高亮行数</label>
+            <select id="highlightLines">
+              <option value="1">1 行</option>
+              <option value="2">2 行</option>
+              <option value="3">3 行</option>
+            </select>
+            <div id="highlightLinesValue" class="value">1 行</div>
           </div>
           <div class="control">
             <label for="highlightColor">高亮颜色</label>
@@ -377,6 +386,8 @@ YFF 禁止去我家</textarea>
       const bottomSpacingValue = document.getElementById("bottomSpacingValue");
       const highlightMode = document.getElementById("highlightMode");
       const highlightModeValue = document.getElementById("highlightModeValue");
+      const highlightLines = document.getElementById("highlightLines");
+      const highlightLinesValue = document.getElementById("highlightLinesValue");
       const highlightColor = document.getElementById("highlightColor");
       const highlightColorValue = document.getElementById("highlightColorValue");
 
@@ -399,7 +410,7 @@ YFF 禁止去我家</textarea>
       let pendingFullscreenAutoStart = false;
       let pendingViewportAnchor = null;
       let lineElements = [];
-      let highlightedLineIndex = -1;
+      let highlightedLineIndexes = [];
 
       function updateSpeedLabel() {
         speedValue.textContent = `${speed.value} px/s`;
@@ -452,22 +463,40 @@ YFF 禁止去我家</textarea>
       }
 
       function updateHighlightedLine() {
-        if (highlightedLineIndex >= 0 && lineElements[highlightedLineIndex]) {
-          lineElements[highlightedLineIndex].classList.remove("is-highlighted");
+        for (const index of highlightedLineIndexes) {
+          if (lineElements[index]) {
+            lineElements[index].classList.remove("is-highlighted");
+          }
         }
-        highlightedLineIndex = -1;
+        highlightedLineIndexes = [];
 
         if (highlightMode.value !== "on" || lineElements.length === 0) {
           return;
         }
 
+        const requestedLines = Number.parseInt(highlightLines.value, 10);
+        const lineCount = Math.min(3, Math.max(1, Number.isFinite(requestedLines) ? requestedLines : 1));
         const lineHeight = Number(fontSize.value) * LINE_HEIGHT_MULTIPLIER;
         const topPad = Number(topSpacing.value);
         const currentY = teleprompter.scrollTop + teleprompter.clientHeight / 2 - topPad;
         const targetIndex = Math.floor(currentY / lineHeight);
-        const clampedIndex = Math.max(0, Math.min(lineElements.length - 1, targetIndex));
-        lineElements[clampedIndex].classList.add("is-highlighted");
-        highlightedLineIndex = clampedIndex;
+        const clampedCenter = Math.max(0, Math.min(lineElements.length - 1, targetIndex));
+        let startIndex = clampedCenter - Math.floor((lineCount - 1) / 2);
+        if (startIndex < 0) {
+          startIndex = 0;
+        }
+        if (startIndex + lineCount > lineElements.length) {
+          startIndex = Math.max(0, lineElements.length - lineCount);
+        }
+
+        for (let i = 0; i < lineCount; i += 1) {
+          const index = startIndex + i;
+          if (!lineElements[index]) {
+            continue;
+          }
+          lineElements[index].classList.add("is-highlighted");
+          highlightedLineIndexes.push(index);
+        }
       }
 
       function renderTeleprompterText() {
@@ -519,7 +548,10 @@ YFF 禁止去我家</textarea>
 
       function updateHighlightConfig() {
         const enabled = highlightMode.value === "on";
-        highlightModeValue.textContent = enabled ? "中间一行已高亮" : "高亮已关闭";
+        const requestedLines = Number.parseInt(highlightLines.value, 10);
+        const lineCount = Math.min(3, Math.max(1, Number.isFinite(requestedLines) ? requestedLines : 1));
+        highlightLinesValue.textContent = `${lineCount} 行`;
+        highlightModeValue.textContent = enabled ? `中间 ${lineCount} 行已高亮` : "高亮已关闭";
 
         const color = highlightColor.value.toLowerCase();
         highlightColorValue.textContent = color;
@@ -735,6 +767,7 @@ YFF 禁止去我家</textarea>
         updateModeHint();
       });
       highlightMode.addEventListener("change", updateHighlightConfig);
+      highlightLines.addEventListener("change", updateHighlightConfig);
       highlightColor.addEventListener("input", updateHighlightConfig);
       teleprompter.addEventListener("scroll", () => {
         updateHighlightedLine();
