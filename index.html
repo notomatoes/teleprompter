@@ -148,10 +148,8 @@
 
       .teleprompter-frame {
         --side-padding: 110px;
-        --focus-height: 216px;
         --top-spacing: 500px;
         --bottom-spacing: 500px;
-        --scrollbar-gap: 0px;
         height: calc(100dvh - 170px);
         position: relative;
         border-radius: 12px;
@@ -169,25 +167,13 @@
         padding: var(--top-spacing) var(--side-padding) var(--bottom-spacing);
       }
 
-      .focus-highlight-window {
-        position: absolute;
-        left: 0;
-        right: var(--scrollbar-gap);
-        top: calc((100% - var(--focus-height)) / 2);
-        height: var(--focus-height);
-        overflow: hidden;
-        pointer-events: none;
-        z-index: 3;
+      .teleprompter-line {
+        white-space: pre;
       }
 
-      .teleprompter-text-highlight {
+      .teleprompter-line.is-highlighted {
         color: var(--focus-text);
         font-weight: 700;
-        transform: translateY(0);
-      }
-
-      .teleprompter-frame.highlight-disabled .focus-highlight-window {
-        display: none;
       }
 
       .hint {
@@ -328,10 +314,10 @@
           <div class="control">
             <label for="highlightMode">高亮</label>
             <select id="highlightMode">
-              <option value="on">开启</option>
               <option value="off">关闭</option>
+              <option value="on">开启</option>
             </select>
-            <div id="highlightModeValue" class="value">中间两行已高亮</div>
+            <div id="highlightModeValue" class="value">高亮已关闭</div>
           </div>
           <div class="control">
             <label for="highlightColor">高亮颜色</label>
@@ -364,9 +350,6 @@
           <div id="teleprompter" class="teleprompter">
             <div id="teleprompterText" class="teleprompter-text"></div>
           </div>
-          <div class="focus-highlight-window" aria-hidden="true">
-            <div id="teleprompterHighlightText" class="teleprompter-text teleprompter-text-highlight"></div>
-          </div>
         </div>
       </section>
     </main>
@@ -376,7 +359,6 @@
       const teleprompterFrame = document.getElementById("teleprompterFrame");
       const teleprompter = document.getElementById("teleprompter");
       const teleprompterText = document.getElementById("teleprompterText");
-      const teleprompterHighlightText = document.getElementById("teleprompterHighlightText");
 
       const speed = document.getElementById("speed");
       const speedValue = document.getElementById("speedValue");
@@ -404,35 +386,124 @@
       const fullscreenButton = document.getElementById("fullscreen");
       const teleprompterPanel = document.getElementById("teleprompterPanel");
 
+      const LINE_HEIGHT_MULTIPLIER = 1.5;
+      const LETTER_SPACING_RATIO = 0.02;
+      const measureContext = document.createElement("canvas").getContext("2d");
+      const fontFamily =
+        '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif';
+
       let running = false;
       let lastFrameTime = 0;
       let durationRemainingSeconds = 0;
       let pendingFullscreenAutoStart = false;
       let pendingViewportAnchor = null;
-
-      function syncText() {
-        const text = sourceText.value || "";
-        teleprompterText.textContent = text;
-        teleprompterHighlightText.textContent = text;
-      }
+      let lineElements = [];
+      let highlightedLineIndex = -1;
 
       function updateSpeedLabel() {
         speedValue.textContent = `${speed.value} px/s`;
       }
 
+      function measureLineWidth(text, letterSpacingPx) {
+        if (!text) {
+          return 0;
+        }
+        return measureContext.measureText(text).width + Math.max(0, text.length - 1) * letterSpacingPx;
+      }
+
+      function wrapParagraphByWidth(paragraph, maxWidth, letterSpacingPx) {
+        if (!paragraph) {
+          return [""];
+        }
+
+        const chars = Array.from(paragraph);
+        const lines = [];
+        let current = "";
+
+        for (const char of chars) {
+          const candidate = current + char;
+          const candidateWidth = measureLineWidth(candidate, letterSpacingPx);
+          if (!current || candidateWidth <= maxWidth) {
+            current = candidate;
+            continue;
+          }
+
+          lines.push(current);
+          current = char;
+        }
+
+        if (current) {
+          lines.push(current);
+        }
+
+        return lines;
+      }
+
+      function buildWrappedLines(text, maxWidth, letterSpacingPx) {
+        const paragraphs = text.split("\n");
+        const wrappedLines = [];
+
+        for (const paragraph of paragraphs) {
+          wrappedLines.push(...wrapParagraphByWidth(paragraph, maxWidth, letterSpacingPx));
+        }
+
+        return wrappedLines.length > 0 ? wrappedLines : [""];
+      }
+
+      function updateHighlightedLine() {
+        if (highlightedLineIndex >= 0 && lineElements[highlightedLineIndex]) {
+          lineElements[highlightedLineIndex].classList.remove("is-highlighted");
+        }
+        highlightedLineIndex = -1;
+
+        if (highlightMode.value !== "on" || lineElements.length === 0) {
+          return;
+        }
+
+        const lineHeight = Number(fontSize.value) * LINE_HEIGHT_MULTIPLIER;
+        const topPad = Number(topSpacing.value);
+        const currentY = teleprompter.scrollTop + teleprompter.clientHeight / 2 - topPad;
+        const targetIndex = Math.floor(currentY / lineHeight);
+        const clampedIndex = Math.max(0, Math.min(lineElements.length - 1, targetIndex));
+        lineElements[clampedIndex].classList.add("is-highlighted");
+        highlightedLineIndex = clampedIndex;
+      }
+
+      function renderTeleprompterText() {
+        const text = sourceText.value || "";
+        const fontPx = Number(fontSize.value);
+        const sidePad = Number(sidePadding.value);
+        const letterSpacingPx = fontPx * LETTER_SPACING_RATIO;
+        const maxWidth = Math.max(40, teleprompter.clientWidth - sidePad * 2);
+
+        measureContext.font = `600 ${fontPx}px ${fontFamily}`;
+        const lines = buildWrappedLines(text, maxWidth, letterSpacingPx);
+
+        const fragment = document.createDocumentFragment();
+        for (const line of lines) {
+          const lineDiv = document.createElement("div");
+          lineDiv.className = "teleprompter-line";
+          lineDiv.textContent = line.length > 0 ? line : " ";
+          fragment.appendChild(lineDiv);
+        }
+
+        teleprompterText.replaceChildren(fragment);
+        lineElements = Array.from(teleprompterText.children);
+        updateHighlightedLine();
+      }
+
       function updateFontLabel() {
         const px = `${fontSize.value}px`;
         teleprompterText.style.fontSize = px;
-        teleprompterHighlightText.style.fontSize = px;
         fontSizeValue.textContent = px;
-        const focusHeight = Math.round(Number(fontSize.value) * 1.5 * 2);
-        teleprompterFrame.style.setProperty("--focus-height", `${focusHeight}px`);
+        renderTeleprompterText();
       }
 
       function updateSidePaddingLabel() {
         const value = Number(sidePadding.value);
         teleprompterFrame.style.setProperty("--side-padding", `${value}px`);
         sidePaddingValue.textContent = `${value} px`;
+        renderTeleprompterText();
       }
 
       function updateVerticalSpacing() {
@@ -442,25 +513,17 @@
         teleprompterFrame.style.setProperty("--bottom-spacing", `${bottomValue}px`);
         topSpacingValue.textContent = `${topValue} px`;
         bottomSpacingValue.textContent = `${bottomValue} px`;
+        updateHighlightedLine();
       }
 
       function updateHighlightConfig() {
         const enabled = highlightMode.value === "on";
-        teleprompterFrame.classList.toggle("highlight-disabled", !enabled);
-        highlightModeValue.textContent = enabled ? "中间两行已高亮" : "高亮已关闭";
+        highlightModeValue.textContent = enabled ? "中间一行已高亮" : "高亮已关闭";
 
         const color = highlightColor.value.toLowerCase();
         highlightColorValue.textContent = color;
         teleprompterFrame.style.setProperty("--focus-text", color);
-      }
-
-      function syncHighlightOffset() {
-        teleprompterHighlightText.style.transform = `translateY(${-teleprompter.scrollTop}px)`;
-      }
-
-      function syncOverlayMetrics() {
-        const scrollbarGap = Math.max(0, teleprompter.offsetWidth - teleprompter.clientWidth);
-        teleprompterFrame.style.setProperty("--scrollbar-gap", `${scrollbarGap}px`);
+        updateHighlightedLine();
       }
 
       function getViewportAnchor() {
@@ -547,7 +610,7 @@
           durationRemainingSeconds = Math.max(0, durationRemainingSeconds - deltaSeconds);
         }
         teleprompter.scrollTop += frameSpeed * deltaSeconds;
-        syncHighlightOffset();
+        updateHighlightedLine();
 
         const maxTop = teleprompter.scrollHeight - teleprompter.clientHeight;
         if (teleprompter.scrollTop >= maxTop) {
@@ -597,7 +660,7 @@
         running = false;
         lastFrameTime = 0;
         durationRemainingSeconds = 0;
-        syncHighlightOffset();
+        updateHighlightedLine();
         updateModeHint();
       });
 
@@ -605,6 +668,10 @@
         document.body.classList.toggle("show-editor");
         const visible = document.body.classList.contains("show-editor");
         toggleEditorButton.textContent = visible ? "隐藏编辑区" : "显示编辑区";
+        const anchor = getViewportAnchor();
+        renderTeleprompterText();
+        restoreViewportAnchor(anchor);
+        updateHighlightedLine();
         updateModeHint();
       });
 
@@ -625,12 +692,24 @@
       });
 
       sourceText.addEventListener("input", () => {
-        syncText();
+        const anchor = getViewportAnchor();
+        renderTeleprompterText();
+        restoreViewportAnchor(anchor);
         updateModeHint();
       });
       speed.addEventListener("input", updateSpeedLabel);
-      fontSize.addEventListener("input", updateFontLabel);
-      sidePadding.addEventListener("input", updateSidePaddingLabel);
+      fontSize.addEventListener("input", () => {
+        const anchor = getViewportAnchor();
+        updateFontLabel();
+        restoreViewportAnchor(anchor);
+        updateModeHint();
+      });
+      sidePadding.addEventListener("input", () => {
+        const anchor = getViewportAnchor();
+        updateSidePaddingLabel();
+        restoreViewportAnchor(anchor);
+        updateModeHint();
+      });
       topSpacing.addEventListener("input", () => {
         updateVerticalSpacing();
         updateModeHint();
@@ -657,15 +736,14 @@
       highlightMode.addEventListener("change", updateHighlightConfig);
       highlightColor.addEventListener("input", updateHighlightConfig);
       teleprompter.addEventListener("scroll", () => {
-        syncHighlightOffset();
+        updateHighlightedLine();
         updateModeHint();
       });
       document.addEventListener("fullscreenchange", () => {
         requestAnimationFrame(() => {
-          syncOverlayMetrics();
           restoreViewportAnchor(pendingViewportAnchor);
           pendingViewportAnchor = null;
-          syncHighlightOffset();
+          updateHighlightedLine();
           updateModeHint();
 
           if (pendingFullscreenAutoStart && document.fullscreenElement === teleprompterPanel) {
@@ -677,20 +755,19 @@
         });
       });
       window.addEventListener("resize", () => {
-        syncOverlayMetrics();
-        syncHighlightOffset();
+        const anchor = getViewportAnchor();
+        renderTeleprompterText();
+        restoreViewportAnchor(anchor);
+        updateHighlightedLine();
         updateModeHint();
       });
 
-      syncText();
       updateSpeedLabel();
       updateFontLabel();
       updateSidePaddingLabel();
       updateVerticalSpacing();
       updateDurationLabel();
       updateHighlightConfig();
-      syncOverlayMetrics();
-      syncHighlightOffset();
       updateModeHint();
     </script>
   </body>
