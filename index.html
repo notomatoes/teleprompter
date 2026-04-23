@@ -13,8 +13,6 @@
         --muted: #6b7280;
         --accent: #0a84ff;
         --border: #d1d5db;
-        --focus-line: rgba(17, 24, 39, 0.22);
-        --focus-bg: rgba(255, 59, 48, 0.06);
         --focus-text: #d92c20;
       }
 
@@ -26,8 +24,6 @@
           --muted: #9ca3af;
           --accent: #4ea2ff;
           --border: #303742;
-          --focus-line: rgba(243, 244, 246, 0.28);
-          --focus-bg: rgba(255, 107, 97, 0.1);
           --focus-text: #ff6b61;
         }
       }
@@ -145,17 +141,23 @@
       }
 
       .teleprompter {
+        height: 100%;
+        overflow-y: auto;
+        padding: 0;
+      }
+
+      .teleprompter-frame {
         --side-padding: 110px;
         --focus-height: 216px;
         --top-spacing: 220px;
         --bottom-spacing: 220px;
+        --scrollbar-gap: 0px;
         height: calc(100dvh - 170px);
         position: relative;
-        overflow-y: auto;
         border-radius: 12px;
         border: 1px solid var(--border);
         background: rgba(255, 255, 255, 0.02);
-        padding: 0;
+        overflow: hidden;
       }
 
       .teleprompter-text {
@@ -170,15 +172,12 @@
       .focus-highlight-window {
         position: absolute;
         left: 0;
-        right: 0;
+        right: var(--scrollbar-gap);
         top: calc((100% - var(--focus-height)) / 2);
         height: var(--focus-height);
         overflow: hidden;
         pointer-events: none;
         z-index: 3;
-        background: var(--focus-bg);
-        border-top: 1px solid var(--focus-line);
-        border-bottom: 1px solid var(--focus-line);
       }
 
       .teleprompter-text-highlight {
@@ -187,7 +186,7 @@
         transform: translateY(0);
       }
 
-      .teleprompter.highlight-disabled .focus-highlight-window {
+      .teleprompter-frame.highlight-disabled .focus-highlight-window {
         display: none;
       }
 
@@ -206,6 +205,10 @@
       }
 
       body.show-editor .teleprompter {
+        height: 100%;
+      }
+
+      body.show-editor .teleprompter-frame {
         height: calc(100dvh - 390px);
       }
 
@@ -216,6 +219,12 @@
       }
 
       #teleprompterPanel:fullscreen .teleprompter {
+        height: 100%;
+        border-radius: 0;
+        border: 0;
+      }
+
+      #teleprompterPanel:fullscreen .teleprompter-frame {
         height: 100dvh;
         border-radius: 0;
         border: 0;
@@ -227,6 +236,10 @@
         }
 
         .teleprompter {
+          height: 100%;
+        }
+
+        .teleprompter-frame {
           height: calc(100dvh - 220px);
         }
 
@@ -235,6 +248,10 @@
         }
 
         body.show-editor .teleprompter {
+          height: 100%;
+        }
+
+        body.show-editor .teleprompter-frame {
           height: calc(100dvh - 420px);
         }
       }
@@ -249,10 +266,18 @@
         }
 
         .teleprompter {
+          height: 100%;
+        }
+
+        .teleprompter-frame {
           height: calc(100dvh - 280px);
         }
 
         body.show-editor .teleprompter {
+          height: 100%;
+        }
+
+        body.show-editor .teleprompter-frame {
           height: calc(100dvh - 500px);
         }
       }
@@ -335,8 +360,10 @@
       </section>
 
       <section id="teleprompterPanel" class="panel">
-        <div id="teleprompter" class="teleprompter">
-          <div id="teleprompterText" class="teleprompter-text"></div>
+        <div id="teleprompterFrame" class="teleprompter-frame">
+          <div id="teleprompter" class="teleprompter">
+            <div id="teleprompterText" class="teleprompter-text"></div>
+          </div>
           <div class="focus-highlight-window" aria-hidden="true">
             <div id="teleprompterHighlightText" class="teleprompter-text teleprompter-text-highlight"></div>
           </div>
@@ -346,6 +373,7 @@
 
     <script>
       const sourceText = document.getElementById("sourceText");
+      const teleprompterFrame = document.getElementById("teleprompterFrame");
       const teleprompter = document.getElementById("teleprompter");
       const teleprompterText = document.getElementById("teleprompterText");
       const teleprompterHighlightText = document.getElementById("teleprompterHighlightText");
@@ -396,50 +424,41 @@
         teleprompterHighlightText.style.fontSize = px;
         fontSizeValue.textContent = px;
         const focusHeight = Math.round(Number(fontSize.value) * 1.5 * 2);
-        teleprompter.style.setProperty("--focus-height", `${focusHeight}px`);
+        teleprompterFrame.style.setProperty("--focus-height", `${focusHeight}px`);
       }
 
       function updateSidePaddingLabel() {
         const value = Number(sidePadding.value);
-        teleprompter.style.setProperty("--side-padding", `${value}px`);
+        teleprompterFrame.style.setProperty("--side-padding", `${value}px`);
         sidePaddingValue.textContent = `${value} px`;
       }
 
       function updateVerticalSpacing() {
         const topValue = Number(topSpacing.value);
         const bottomValue = Number(bottomSpacing.value);
-        teleprompter.style.setProperty("--top-spacing", `${topValue}px`);
-        teleprompter.style.setProperty("--bottom-spacing", `${bottomValue}px`);
+        teleprompterFrame.style.setProperty("--top-spacing", `${topValue}px`);
+        teleprompterFrame.style.setProperty("--bottom-spacing", `${bottomValue}px`);
         topSpacingValue.textContent = `${topValue} px`;
         bottomSpacingValue.textContent = `${bottomValue} px`;
       }
 
-      function hexToRgba(hex, alpha) {
-        const raw = hex.replace("#", "");
-        if (raw.length !== 6) {
-          return `rgba(217, 44, 32, ${alpha})`;
-        }
-
-        const r = Number.parseInt(raw.slice(0, 2), 16);
-        const g = Number.parseInt(raw.slice(2, 4), 16);
-        const b = Number.parseInt(raw.slice(4, 6), 16);
-        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-      }
-
       function updateHighlightConfig() {
         const enabled = highlightMode.value === "on";
-        teleprompter.classList.toggle("highlight-disabled", !enabled);
+        teleprompterFrame.classList.toggle("highlight-disabled", !enabled);
         highlightModeValue.textContent = enabled ? "中间两行已高亮" : "高亮已关闭";
 
         const color = highlightColor.value.toLowerCase();
         highlightColorValue.textContent = color;
-        teleprompter.style.setProperty("--focus-text", color);
-        teleprompter.style.setProperty("--focus-bg", hexToRgba(color, 0.08));
-        teleprompter.style.setProperty("--focus-line", hexToRgba(color, 0.34));
+        teleprompterFrame.style.setProperty("--focus-text", color);
       }
 
       function syncHighlightOffset() {
         teleprompterHighlightText.style.transform = `translateY(${-teleprompter.scrollTop}px)`;
+      }
+
+      function syncOverlayMetrics() {
+        const scrollbarGap = Math.max(0, teleprompter.offsetWidth - teleprompter.clientWidth);
+        teleprompterFrame.style.setProperty("--scrollbar-gap", `${scrollbarGap}px`);
       }
 
       function formatDuration(seconds) {
@@ -617,10 +636,12 @@
         updateModeHint();
       });
       document.addEventListener("fullscreenchange", () => {
+        syncOverlayMetrics();
         syncHighlightOffset();
         updateModeHint();
       });
       window.addEventListener("resize", () => {
+        syncOverlayMetrics();
         syncHighlightOffset();
         updateModeHint();
       });
@@ -632,6 +653,7 @@
       updateVerticalSpacing();
       updateDurationLabel();
       updateHighlightConfig();
+      syncOverlayMetrics();
       syncHighlightOffset();
       updateModeHint();
     </script>
