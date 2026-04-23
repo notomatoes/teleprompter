@@ -723,8 +723,16 @@ YFF 禁止去我家</textarea>
         requestAnimationFrame(animate);
       }
 
-      function startScrolling() {
-        if (running) {
+      function startScrolling(options = {}) {
+        const { fromTop = false } = options;
+
+        if (fromTop) {
+          running = false;
+          lastFrameTime = 0;
+          teleprompter.scrollTop = 0;
+          durationRemainingSeconds = 0;
+          updateHighlightedLine();
+        } else if (running) {
           return false;
         }
 
@@ -767,12 +775,12 @@ YFF 禁止去我家</textarea>
 
       fullscreenButton.addEventListener("click", async () => {
         try {
-          pendingViewportAnchor = getViewportAnchor();
           if (document.fullscreenElement) {
             pendingFullscreenAutoStart = false;
             await document.exitFullscreen();
             return;
           }
+          pendingViewportAnchor = 0;
           pendingFullscreenAutoStart = true;
           await teleprompterPanel.requestFullscreen();
         } catch (error) {
@@ -838,7 +846,7 @@ YFF 禁止去我家</textarea>
           updateModeHint();
 
           if (pendingFullscreenAutoStart && document.fullscreenElement === teleprompterPanel) {
-            startScrolling();
+            startScrolling({ fromTop: true });
           }
           if (document.fullscreenElement !== teleprompterPanel) {
             pendingFullscreenAutoStart = false;
