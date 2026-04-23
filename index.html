@@ -595,6 +595,19 @@ YFF 禁止去我家</textarea>
         );
       }
 
+      function buildHighlightGradient(baseHex) {
+        const rgb = hexToRgb(baseHex);
+        if (!rgb) {
+          return [baseHex, baseHex, baseHex];
+        }
+
+        const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+        const line2Lift = luminance < 0.5 ? 0.16 : 0.12;
+        const line3Lift = luminance < 0.5 ? 0.28 : 0.22;
+
+        return [baseHex, mixWithWhite(baseHex, line2Lift), mixWithWhite(baseHex, line3Lift)];
+      }
+
       function updateHighlightConfig() {
         const enabled = highlightMode.value === "on";
         const requestedLines = Number.parseInt(highlightLines.value, 10);
@@ -603,11 +616,12 @@ YFF 禁止去我家</textarea>
         highlightModeValue.textContent = enabled ? `中间 ${lineCount} 行已高亮` : "高亮已关闭";
 
         const color = highlightColor.value.toLowerCase();
+        const gradient = buildHighlightGradient(color);
         highlightColorValue.textContent = color;
         teleprompterFrame.style.setProperty("--focus-text", color);
-        teleprompterFrame.style.setProperty("--focus-text-1", color);
-        teleprompterFrame.style.setProperty("--focus-text-2", mixWithWhite(color, 0.35));
-        teleprompterFrame.style.setProperty("--focus-text-3", mixWithWhite(color, 0.6));
+        teleprompterFrame.style.setProperty("--focus-text-1", gradient[0]);
+        teleprompterFrame.style.setProperty("--focus-text-2", gradient[1]);
+        teleprompterFrame.style.setProperty("--focus-text-3", gradient[2]);
         updateHighlightedLine();
       }
 
