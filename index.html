@@ -93,6 +93,15 @@
         font: inherit;
       }
 
+      input[type="color"] {
+        width: 100%;
+        height: 42px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: transparent;
+        padding: 4px;
+      }
+
       .value {
         font-size: 13px;
         color: var(--muted);
@@ -176,6 +185,10 @@
         color: var(--focus-text);
         font-weight: 700;
         transform: translateY(0);
+      }
+
+      .teleprompter.highlight-disabled .focus-highlight-window {
+        display: none;
       }
 
       .hint {
@@ -287,6 +300,19 @@
             <input id="bottomSpacing" type="range" min="0" max="1200" step="10" value="220" />
             <div id="bottomSpacingValue" class="value">220 px</div>
           </div>
+          <div class="control">
+            <label for="highlightMode">高亮</label>
+            <select id="highlightMode">
+              <option value="on">开启</option>
+              <option value="off">关闭</option>
+            </select>
+            <div id="highlightModeValue" class="value">中间两行已高亮</div>
+          </div>
+          <div class="control">
+            <label for="highlightColor">高亮颜色</label>
+            <input id="highlightColor" type="color" value="#d92c20" />
+            <div id="highlightColorValue" class="value">#d92c20</div>
+          </div>
           <div class="control" style="grid-column: span 2;">
             <div class="buttons">
               <button id="start" class="primary">开始</button>
@@ -338,6 +364,10 @@
       const topSpacingValue = document.getElementById("topSpacingValue");
       const bottomSpacing = document.getElementById("bottomSpacing");
       const bottomSpacingValue = document.getElementById("bottomSpacingValue");
+      const highlightMode = document.getElementById("highlightMode");
+      const highlightModeValue = document.getElementById("highlightModeValue");
+      const highlightColor = document.getElementById("highlightColor");
+      const highlightColorValue = document.getElementById("highlightColorValue");
 
       const startButton = document.getElementById("start");
       const pauseButton = document.getElementById("pause");
@@ -348,7 +378,7 @@
 
       let running = false;
       let lastFrameTime = 0;
-      let durationModeSpeed = 0;
+      let durationRemainingSeconds = 0;
 
       function syncText() {
         const text = sourceText.value || "";
@@ -382,6 +412,30 @@
         teleprompter.style.setProperty("--bottom-spacing", `${bottomValue}px`);
         topSpacingValue.textContent = `${topValue} px`;
         bottomSpacingValue.textContent = `${bottomValue} px`;
+      }
+
+      function hexToRgba(hex, alpha) {
+        const raw = hex.replace("#", "");
+        if (raw.length !== 6) {
+          return `rgba(217, 44, 32, ${alpha})`;
+        }
+
+        const r = Number.parseInt(raw.slice(0, 2), 16);
+        const g = Number.parseInt(raw.slice(2, 4), 16);
+        const b = Number.parseInt(raw.slice(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+
+      function updateHighlightConfig() {
+        const enabled = highlightMode.value === "on";
+        teleprompter.classList.toggle("highlight-disabled", !enabled);
+        highlightModeValue.textContent = enabled ? "中间两行已高亮" : "高亮已关闭";
+
+        const color = highlightColor.value.toLowerCase();
+        highlightColorValue.textContent = color;
+        teleprompter.style.setProperty("--focus-text", color);
+        teleprompter.style.setProperty("--focus-bg", hexToRgba(color, 0.08));
+        teleprompter.style.setProperty("--focus-line", hexToRgba(color, 0.34));
       }
 
       function syncHighlightOffset() {
@@ -425,10 +479,17 @@
           return;
         }
 
-        const seconds = getSafeDurationSeconds();
         const remaining = getRemainingDistance();
+        const shouldUseRemainingSeconds = durationRemainingSeconds > 0 && teleprompter.scrollTop > 1;
+        const seconds = shouldUseRemainingSeconds
+          ? Math.max(durationRemainingSeconds, 0)
+          : getSafeDurationSeconds();
         const computed = seconds > 0 ? remaining / seconds : 0;
-        modeHint.textContent = `按当前剩余内容约 ${computed.toFixed(1)} px/s`;
+        if (remaining <= 0) {
+          modeHint.textContent = "当前内容不足以滚动";
+          return;
+        }
+        modeHint.textContent = `剩余约 ${formatDuration(seconds)}，当前 ${computed.toFixed(1)} px/s`;
       }
 
       function animate(time) {
@@ -443,7 +504,13 @@
         const deltaSeconds = (time - lastFrameTime) / 1000;
         lastFrameTime = time;
 
-        const frameSpeed = speedMode.value === "duration" ? durationModeSpeed : Number(speed.value);
+        let frameSpeed = Number(speed.value);
+        if (speedMode.value === "duration") {
+          const remaining = getRemainingDistance();
+          const safeSeconds = Math.max(durationRemainingSeconds, 0.016);
+          frameSpeed = remaining / safeSeconds;
+          durationRemainingSeconds = Math.max(0, durationRemainingSeconds - deltaSeconds);
+        }
         teleprompter.scrollTop += frameSpeed * deltaSeconds;
         syncHighlightOffset();
 
@@ -451,6 +518,8 @@
         if (teleprompter.scrollTop >= maxTop) {
           running = false;
           lastFrameTime = 0;
+          durationRemainingSeconds = 0;
+          updateModeHint();
           return;
         }
 
@@ -463,9 +532,15 @@
         }
 
         if (speedMode.value === "duration") {
-          const remaining = getRemainingDistance();
-          const seconds = getSafeDurationSeconds();
-          durationModeSpeed = seconds > 0 ? remaining / seconds : 0;
+          if (getRemainingDistance() <= 0) {
+            updateModeHint();
+            return;
+          }
+          if (durationRemainingSeconds <= 0 || teleprompter.scrollTop <= 1) {
+            durationRemainingSeconds = getSafeDurationSeconds();
+          }
+        } else {
+          durationRemainingSeconds = 0;
         }
 
         running = true;
@@ -481,6 +556,7 @@
         teleprompter.scrollTop = 0;
         running = false;
         lastFrameTime = 0;
+        durationRemainingSeconds = 0;
         syncHighlightOffset();
         updateModeHint();
       });
@@ -520,17 +596,22 @@
         updateModeHint();
       });
       speedMode.addEventListener("change", () => {
-        if (running && speedMode.value === "duration") {
-          const remaining = getRemainingDistance();
-          const seconds = getSafeDurationSeconds();
-          durationModeSpeed = seconds > 0 ? remaining / seconds : 0;
+        if (speedMode.value === "duration") {
+          durationRemainingSeconds = getSafeDurationSeconds();
+        } else {
+          durationRemainingSeconds = 0;
         }
         updateModeHint();
       });
       totalDuration.addEventListener("input", () => {
         updateDurationLabel();
+        if (speedMode.value === "duration") {
+          durationRemainingSeconds = getSafeDurationSeconds();
+        }
         updateModeHint();
       });
+      highlightMode.addEventListener("change", updateHighlightConfig);
+      highlightColor.addEventListener("input", updateHighlightConfig);
       teleprompter.addEventListener("scroll", () => {
         syncHighlightOffset();
         updateModeHint();
@@ -550,6 +631,7 @@
       updateSidePaddingLabel();
       updateVerticalSpacing();
       updateDurationLabel();
+      updateHighlightConfig();
       syncHighlightOffset();
       updateModeHint();
     </script>
