@@ -171,8 +171,18 @@
         white-space: pre;
       }
 
-      .teleprompter-line.is-highlighted {
-        color: var(--focus-text);
+      .teleprompter-line.is-highlighted-l1 {
+        color: var(--focus-text-1, var(--focus-text));
+        font-weight: 700;
+      }
+
+      .teleprompter-line.is-highlighted-l2 {
+        color: var(--focus-text-2, var(--focus-text));
+        font-weight: 700;
+      }
+
+      .teleprompter-line.is-highlighted-l3 {
+        color: var(--focus-text-3, var(--focus-text));
         font-weight: 700;
       }
 
@@ -317,16 +327,16 @@
               <option value="on">开启</option>
               <option value="off">关闭</option>
             </select>
-            <div id="highlightModeValue" class="value">中间 1 行已高亮</div>
+            <div id="highlightModeValue" class="value">中间 3 行已高亮</div>
           </div>
           <div class="control">
             <label for="highlightLines">高亮行数</label>
             <select id="highlightLines">
-              <option value="1">1 行</option>
-              <option value="2">2 行</option>
               <option value="3">3 行</option>
+              <option value="2">2 行</option>
+              <option value="1">1 行</option>
             </select>
-            <div id="highlightLinesValue" class="value">1 行</div>
+            <div id="highlightLinesValue" class="value">3 行</div>
           </div>
           <div class="control">
             <label for="highlightColor">高亮颜色</label>
@@ -465,7 +475,11 @@ YFF 禁止去我家</textarea>
       function updateHighlightedLine() {
         for (const index of highlightedLineIndexes) {
           if (lineElements[index]) {
-            lineElements[index].classList.remove("is-highlighted");
+            lineElements[index].classList.remove(
+              "is-highlighted-l1",
+              "is-highlighted-l2",
+              "is-highlighted-l3"
+            );
           }
         }
         highlightedLineIndexes = [];
@@ -494,7 +508,8 @@ YFF 禁止去我家</textarea>
           if (!lineElements[index]) {
             continue;
           }
-          lineElements[index].classList.add("is-highlighted");
+          const className = i === 0 ? "is-highlighted-l1" : i === 1 ? "is-highlighted-l2" : "is-highlighted-l3";
+          lineElements[index].classList.add(className);
           highlightedLineIndexes.push(index);
         }
       }
@@ -546,6 +561,38 @@ YFF 禁止去我家</textarea>
         updateHighlightedLine();
       }
 
+      function hexToRgb(hex) {
+        const raw = hex.replace("#", "");
+        if (raw.length !== 6) {
+          return null;
+        }
+        const r = Number.parseInt(raw.slice(0, 2), 16);
+        const g = Number.parseInt(raw.slice(2, 4), 16);
+        const b = Number.parseInt(raw.slice(4, 6), 16);
+        if (![r, g, b].every((value) => Number.isFinite(value))) {
+          return null;
+        }
+        return { r, g, b };
+      }
+
+      function rgbToHex(r, g, b) {
+        const toHex = (value) => Math.round(Math.max(0, Math.min(255, value))).toString(16).padStart(2, "0");
+        return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+      }
+
+      function mixWithWhite(hex, ratio) {
+        const rgb = hexToRgb(hex);
+        if (!rgb) {
+          return hex;
+        }
+        const t = Math.max(0, Math.min(1, ratio));
+        return rgbToHex(
+          rgb.r + (255 - rgb.r) * t,
+          rgb.g + (255 - rgb.g) * t,
+          rgb.b + (255 - rgb.b) * t
+        );
+      }
+
       function updateHighlightConfig() {
         const enabled = highlightMode.value === "on";
         const requestedLines = Number.parseInt(highlightLines.value, 10);
@@ -556,6 +603,9 @@ YFF 禁止去我家</textarea>
         const color = highlightColor.value.toLowerCase();
         highlightColorValue.textContent = color;
         teleprompterFrame.style.setProperty("--focus-text", color);
+        teleprompterFrame.style.setProperty("--focus-text-1", color);
+        teleprompterFrame.style.setProperty("--focus-text-2", mixWithWhite(color, 0.35));
+        teleprompterFrame.style.setProperty("--focus-text-3", mixWithWhite(color, 0.6));
         updateHighlightedLine();
       }
 
