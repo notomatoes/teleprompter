@@ -149,8 +149,8 @@
       .teleprompter-frame {
         --side-padding: 110px;
         --focus-height: 216px;
-        --top-spacing: 220px;
-        --bottom-spacing: 220px;
+        --top-spacing: 500px;
+        --bottom-spacing: 500px;
         --scrollbar-gap: 0px;
         height: calc(100dvh - 170px);
         position: relative;
@@ -317,13 +317,13 @@
           </div>
           <div class="control">
             <label for="topSpacing">上留白</label>
-            <input id="topSpacing" type="range" min="0" max="1200" step="10" value="220" />
-            <div id="topSpacingValue" class="value">220 px</div>
+            <input id="topSpacing" type="range" min="0" max="1200" step="10" value="500" />
+            <div id="topSpacingValue" class="value">500 px</div>
           </div>
           <div class="control">
             <label for="bottomSpacing">下留白</label>
-            <input id="bottomSpacing" type="range" min="0" max="1200" step="10" value="220" />
-            <div id="bottomSpacingValue" class="value">220 px</div>
+            <input id="bottomSpacing" type="range" min="0" max="1200" step="10" value="500" />
+            <div id="bottomSpacingValue" class="value">500 px</div>
           </div>
           <div class="control">
             <label for="highlightMode">高亮</label>
@@ -407,6 +407,8 @@
       let running = false;
       let lastFrameTime = 0;
       let durationRemainingSeconds = 0;
+      let pendingFullscreenAutoStart = false;
+      let pendingViewportAnchor = null;
 
       function syncText() {
         const text = sourceText.value || "";
@@ -459,6 +461,20 @@
       function syncOverlayMetrics() {
         const scrollbarGap = Math.max(0, teleprompter.offsetWidth - teleprompter.clientWidth);
         teleprompterFrame.style.setProperty("--scrollbar-gap", `${scrollbarGap}px`);
+      }
+
+      function getViewportAnchor() {
+        return teleprompter.scrollTop + teleprompter.clientHeight / 2;
+      }
+
+      function restoreViewportAnchor(anchor) {
+        if (anchor === null) {
+          return;
+        }
+
+        const maxTop = Math.max(0, teleprompter.scrollHeight - teleprompter.clientHeight);
+        const targetTop = Math.max(0, Math.min(anchor - teleprompter.clientHeight / 2, maxTop));
+        teleprompter.scrollTop = targetTop;
       }
 
       function formatDuration(seconds) {
@@ -545,15 +561,15 @@
         requestAnimationFrame(animate);
       }
 
-      startButton.addEventListener("click", () => {
+      function startScrolling() {
         if (running) {
-          return;
+          return false;
         }
 
         if (speedMode.value === "duration") {
           if (getRemainingDistance() <= 0) {
             updateModeHint();
-            return;
+            return false;
           }
           if (durationRemainingSeconds <= 0 || teleprompter.scrollTop <= 1) {
             durationRemainingSeconds = getSafeDurationSeconds();
@@ -564,6 +580,11 @@
 
         running = true;
         requestAnimationFrame(animate);
+        return true;
+      }
+
+      startButton.addEventListener("click", () => {
+        startScrolling();
       });
 
       pauseButton.addEventListener("click", () => {
@@ -589,12 +610,16 @@
 
       fullscreenButton.addEventListener("click", async () => {
         try {
+          pendingViewportAnchor = getViewportAnchor();
           if (document.fullscreenElement) {
+            pendingFullscreenAutoStart = false;
             await document.exitFullscreen();
             return;
           }
+          pendingFullscreenAutoStart = true;
           await teleprompterPanel.requestFullscreen();
         } catch (error) {
+          pendingFullscreenAutoStart = false;
           console.error("切换全屏失败:", error);
         }
       });
@@ -636,9 +661,20 @@
         updateModeHint();
       });
       document.addEventListener("fullscreenchange", () => {
-        syncOverlayMetrics();
-        syncHighlightOffset();
-        updateModeHint();
+        requestAnimationFrame(() => {
+          syncOverlayMetrics();
+          restoreViewportAnchor(pendingViewportAnchor);
+          pendingViewportAnchor = null;
+          syncHighlightOffset();
+          updateModeHint();
+
+          if (pendingFullscreenAutoStart && document.fullscreenElement === teleprompterPanel) {
+            startScrolling();
+          }
+          if (document.fullscreenElement !== teleprompterPanel) {
+            pendingFullscreenAutoStart = false;
+          }
+        });
       });
       window.addEventListener("resize", () => {
         syncOverlayMetrics();
